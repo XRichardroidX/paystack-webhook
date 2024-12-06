@@ -41,13 +41,20 @@ module.exports = async (req, res) => {
       const userEmail = event.data.customer.email;
 
       try {
+        // Debug logs for collection ID and user email
+        console.log("Using collectionId:", APPWRITE_COLLECTION_ID);
+        console.log("Searching for email:", userEmail);
+
         // Search for the user in the Appwrite database based on email
         const response = await databases.listDocuments(APPWRITE_COLLECTION_ID, [
           sdk.Query.equal("email", [userEmail])
         ]);
 
+        console.log("Response from listDocuments:", response);
+
         if (response.documents.length > 0) {
           const user = response.documents[0]; // Assume the first user is the one we need
+          console.log("Found user document:", user);
 
           // Get the current timestamp for startSub (current date and time)
           const startSub = new Date().toISOString();
@@ -75,12 +82,19 @@ module.exports = async (req, res) => {
         }
       } catch (error) {
         console.error("Error updating subscription:", error);
+
+        // Debug logs for the error response
+        if (error.response) {
+          console.error("Error response from Appwrite:", error.response);
+        }
+
         res.status(500).json({ error: "Internal Server Error" });
       }
     } else if (event && event.event === "charge.failed") {
       console.log("Payment failed:", event.data);
       res.status(200).json({ message: "Payment failed" });
     } else {
+      console.log("Unhandled event:", event);
       res.status(200).json({ message: "Event received but unhandled" });
     }
   } else {
