@@ -1,9 +1,12 @@
 // api/webhook.js
-
-require("dotenv").config();
 const crypto = require("crypto");
 
 const secret = process.env.SECRET_KEY;
+
+if (!secret) {
+  console.error("SECRET_KEY is not set!");
+  process.exit(1); // Exit if the secret key is not found
+}
 
 module.exports = async (req, res) => {
   if (req.method === "POST") {
