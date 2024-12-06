@@ -12,7 +12,7 @@ const APPWRITE_PROJECT_ID = "671282e4003a91843ccf";
 const APPWRITE_API_KEY =
   "standard_40fc3c2ca75df6ff025856bda923ffdbbc69ef205b4ef6d32a99c304bcbe1232ff9955dd929eb221b3954728da899c716407c870328fa3047c4ac742eabc49fd20639f0b2fca9d4b2345bd31e257639a7c98cd9f90786025b6d5f77416896dba7480a8c2ab3b79d40c5cb4986b838dfb16a2fdd6c8f52969bc6facca4a75a20b";
 const APPWRITE_COLLECTION_ID = "671284bc002e050dc774";
-const APPWRITE_DATABASE_ID = "671284a4000666441c08"; // Replace with your actual database ID if it's different
+const APPWRITE_DATABASE_ID = "671284a4000666441c08"; // Replace with your actual database ID if needed
 
 // Initialize Appwrite SDK
 const client = new sdk.Client();
@@ -23,6 +23,13 @@ client
 
 // Initialize Appwrite Database service
 const databases = new sdk.Databases(client);
+
+// Function to generate a timestamp in the required format
+const generateTimestamp = (date = new Date()) => {
+  const microseconds = (date.getMilliseconds() * 1000).toString().padStart(6, "0"); // Convert milliseconds to microseconds
+  const isoDate = date.toISOString(); // Standard ISO format
+  return `${isoDate.substring(0, 19)}.${microseconds}`; // Append microseconds
+};
 
 // Webhook to handle Paystack events
 module.exports = async (req, res) => {
@@ -63,12 +70,12 @@ module.exports = async (req, res) => {
           console.log("Found user document:", user);
 
           // Get the current timestamp for startSub (current date and time)
-          const startSub = new Date().toISOString();
+          const startSub = generateTimestamp();
 
           // Calculate the timestamp for the next subscription charge date (next month)
           const nextMonth = new Date();
           nextMonth.setMonth(nextMonth.getMonth() + 1);
-          const endSub = nextMonth.toISOString();
+          const endSub = generateTimestamp(nextMonth);
 
           // Update the user's startSub and endSub in the database
           await databases.updateDocument(
