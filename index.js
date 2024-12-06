@@ -1,63 +1,55 @@
-// Importing required modules
-const express = require('express');
-const axios = require('axios');
-const bodyParser = require('body-parser');
+// Load environment variables from .env file
+require("dotenv").config();
 
-// Initialize Express app
+// Import required libraries
+const express = require("express");
+const bodyParser = require("body-parser");
+const crypto = require("crypto");
+
+// Initialize the Express app
 const app = express();
+const port = process.env.PORT || 3001;
 
-// Middleware to parse JSON bodies
+// Secret key for verifying Paystack signature (stored in .env)
+const secret = process.env.SECRET_KEY;
+
+// Use body-parser middleware to parse incoming JSON requests
 app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
 
-// Paystack secret key (replace with your own secret key from Paystack dashboard)
-const PAYSTACK_SECRET_KEY = 'sk_test_your_secret_key';
+// Webhook route to handle Paystack events
+app.post("/webhook", (req, res) => {
+  // Get the Paystack signature sent in headers
+  const paystackSignature = req.headers["x-paystack-signature"];
 
-/**
- * Function to initialize a Paystack recurring payment plan.
- * This endpoint receives user details from the Flutter app and sends them to Paystack.
- */
-app.post('/initialize-payment', async (req, res) => {
-  try {
-    // Extracting user details from the request body
-    const { email, amount, cardDetails } = req.body;
+  // Compute the HMAC hash from the body of the request and the secret key
+  const hash = crypto
+    .createHmac("sha512", secret)
+    .update(JSON.stringify(req.body))
+    .digest("hex");
 
-    // Validate request body
-    if (!email || !amount || !cardDetails) {
-      return res.status(400).json({ error: 'Email, amount, and card details are required.' });
+  // Compare the computed hash with the signature from Paystack
+  if (hash === paystackSignature) {
+    const event = req.body;
+
+    // Check the event type (you can add more conditions as needed)
+    if (event && event.event === "charge.success") {
+      console.log("Payment was successful:", event.data);
+      res.status(200).json({ message: "Payment successful" });
+    } else if (event && event.event === "charge.failed") {
+      console.log("Payment failed:", event.data);
+      res.status(200).json({ message: "Payment failed" });
+    } else {
+      res.status(200).json({ message: "Event received but unhandled" });
     }
-
-    // Send payment initialization request to Paystack
-    const response = await axios.post(
-      'https://api.paystack.co/transaction/initialize',
-      {
-        email: email, // User's email address
-        amount: amount * 100, // Convert to kobo as Paystack works with the smallest currency unit
-        metadata: {
-          custom_fields: [{
-            cardDetails: cardDetails, // Store card details (if needed securely; sensitive data should not be logged)
-          }],
-        },
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-
-    // Log and send success response
-    console.log('Payment initialized successfully:', response.data);
-    res.status(200).json(response.data);
-  } catch (error) {
-    // Log error for debugging
-    console.error('Error initializing payment:', error.response?.data || error.message);
-    res.status(500).json({ error: error.response?.data || 'Internal server error' });
+  } else {
+    // Invalid signature
+    console.log("Invalid signature");
+    res.status(400).json({ error: "Invalid signature" });
   }
 });
 
 // Start the server
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+app.listen(port, () => {
+  console.log(`Server running at http://localhost:${port}`);
 });
