@@ -41,9 +41,16 @@ module.exports = async (req, res) => {
       const userEmail = event.data.customer.email;
 
       try {
-        // Debug logs for collection ID and user email
+        // Debug logs for collectionId and user email
         console.log("Using collectionId:", APPWRITE_COLLECTION_ID);
+        console.log("CollectionId type:", typeof APPWRITE_COLLECTION_ID);
+        console.log("CollectionId length:", APPWRITE_COLLECTION_ID.length);
         console.log("Searching for email:", userEmail);
+
+        // Ensure the collectionId is clean
+        if (!APPWRITE_COLLECTION_ID || APPWRITE_COLLECTION_ID.trim().length === 0) {
+          throw new Error("Invalid APPWRITE_COLLECTION_ID: Cannot be empty or undefined.");
+        }
 
         // Search for the user in the Appwrite database based on email
         const response = await databases.listDocuments(APPWRITE_COLLECTION_ID, [
