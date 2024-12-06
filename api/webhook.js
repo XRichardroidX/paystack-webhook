@@ -1,9 +1,7 @@
 // api/webhook.js
 const crypto = require("crypto");
 
-// const secret = process.env.SECRET_KEY;
-
-const secret = 'sk_test_adc6b961459dce45a075312db615d2a38055518f';
+const secret = process.env.SECRET_KEY;
 
 if (!secret) {
   console.error("SECRET_KEY is not set!");
@@ -13,11 +11,22 @@ if (!secret) {
 module.exports = async (req, res) => {
   if (req.method === "POST") {
     const paystackSignature = req.headers["x-paystack-signature"];
+    const requestBody = JSON.stringify(req.body);
+    
+    // Log the request body and signature for debugging
+    console.log("Received Request Body:", requestBody);
+    console.log("Received Signature:", paystackSignature);
+    
+    // Calculate the hash using the request body and secret key
     const hash = crypto
       .createHmac("sha512", secret)
-      .update(JSON.stringify(req.body))
+      .update(requestBody)
       .digest("hex");
 
+    // Log the calculated hash for debugging
+    console.log("Calculated Hash:", hash);
+
+    // Compare the hash with the signature from Paystack
     if (hash === paystackSignature) {
       const event = req.body;
       if (event && event.event === "charge.success") {
