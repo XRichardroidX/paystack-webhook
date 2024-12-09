@@ -116,13 +116,16 @@ module.exports = async (req, res) => {
           const startSub = generateTimestamp();
           const endSub = calculateEndSub(planName);
 
-          // Update user document
+          // Update subscription details
           await databases.updateDocument(
             APPWRITE_DATABASE_ID,
             APPWRITE_COLLECTION_ID,
             user.$id,
             { startSub, endSub }
           );
+
+          // Update subscription history
+          await updateSubscriptionHistory(email, event.data);
 
           console.log(`Subscription updated for ${email}`);
           res.status(200).json({ message: "Subscription updated" });
