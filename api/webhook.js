@@ -6,7 +6,8 @@ const dotenv = require("dotenv");
 dotenv.config();
 
 // Initialize environment variables
-const PAYSTACK_SECRET = "sk_test_adc6b961459dce45a075312db615d2a38055518f";
+const PAYSTACK_SECRET_TEST = "sk_test_adc6b961459dce45a075312db615d2a38055518f";
+const PAYSTACK_SECRET = "sk_live_2cb5c0611da9addb24ee696a748c21788da71f09";
 const APPWRITE_ENDPOINT = "https://cloud.appwrite.io/v1";
 const APPWRITE_PROJECT_ID = "671282e4003a91843ccf";
 const APPWRITE_API_KEY = "your_appwrite_api_key";
