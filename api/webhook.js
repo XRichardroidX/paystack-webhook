@@ -9,8 +9,7 @@ dotenv.config();
 const PAYSTACK_SECRET = "sk_test_adc6b961459dce45a075312db615d2a38055518f";
 const APPWRITE_ENDPOINT = "https://cloud.appwrite.io/v1";
 const APPWRITE_PROJECT_ID = "671282e4003a91843ccf";
-const APPWRITE_API_KEY =
-  "standard_40fc3c2ca75df6ff025856bda923ffdbbc69ef205b4ef6d32a99c304bcbe1232ff9955dd929eb221b3954728da899c716407c870328fa3047c4ac742eabc49fd20639f0b2fca9d4b2345bd31e257639a7c98cd9f90786025b6d5f77416896dba7480a8c2ab3b79d40c5cb4986b838dfb16a2fdd6c8f52969bc6facca4a75a20b";
+const APPWRITE_API_KEY = "your_appwrite_api_key";
 const APPWRITE_COLLECTION_ID = "671284bc002e050dc774";
 const APPWRITE_DATABASE_ID = "671284a4000666441c08";
 
@@ -24,13 +23,24 @@ client
 // Initialize Appwrite Database service
 const databases = new sdk.Databases(client);
 
-// Function to generate a timestamp in the required format
+// Function to generate a timestamp
 const generateTimestamp = (date = new Date()) => {
   const microseconds = (date.getMilliseconds() * 1000)
     .toString()
     .padStart(6, "0");
   const isoDate = date.toISOString();
   return `${isoDate.substring(0, 19)}.${microseconds}`;
+};
+
+// Function to calculate subscription end date
+const calculateEndSub = (interval) => {
+  const endDate = new Date();
+  if (interval === "monthly") {
+    endDate.setMonth(endDate.getMonth() + 1);
+  } else if (interval === "yearly") {
+    endDate.setFullYear(endDate.getFullYear() + 1);
+  }
+  return generateTimestamp(endDate);
 };
 
 // Webhook to handle Paystack events
@@ -48,114 +58,76 @@ module.exports = async (req, res) => {
 
   const event = req.body;
 
-  const handleEvent = async (eventType, data) => {
-    console.log(`Event: ${eventType}`, data);
-    res.status(200).json({ message: `${eventType} event received` });
+  const updateSubscriptionHistory = async (email, eventData) => {
+    try {
+      const response = await databases.listDocuments(
+        APPWRITE_DATABASE_ID,
+        APPWRITE_COLLECTION_ID,
+        [sdk.Query.equal("email", [email])]
+      );
+
+      if (response.documents.length > 0) {
+        const user = response.documents[0];
+
+        // Fetch current subscription history
+        const currentHistory = user.subscriptionHistory || "";
+
+        // Format the new entry
+        const newEntry = JSON.stringify(eventData, null, 2);
+
+        // Update the subscription history
+        const updatedHistory = currentHistory
+          ? `${currentHistory}\n\n,\n\n${newEntry}`
+          : newEntry;
+
+        // Update user document
+        await databases.updateDocument(
+          APPWRITE_DATABASE_ID,
+          APPWRITE_COLLECTION_ID,
+          user.$id,
+          { subscriptionHistory: updatedHistory }
+        );
+
+        console.log(`Subscription history updated for ${email}`);
+      } else {
+        console.log(`User with email ${email} not found`);
+      }
+    } catch (error) {
+      console.error("Error updating subscription history:", error);
+    }
   };
 
   switch (event?.event) {
     case "charge.success":
       console.log("Payment was successful:", event.data);
-      const userEmail = event.data.customer.email;
+
+      const { email } = event.data.customer;
+      const planInterval = event.data.plan?.interval || "monthly"; // Default to monthly if undefined
 
       try {
         const response = await databases.listDocuments(
           APPWRITE_DATABASE_ID,
           APPWRITE_COLLECTION_ID,
-          [sdk.Query.equal("email", [userEmail])]
+          [sdk.Query.equal("email", [email])]
         );
 
         if (response.documents.length > 0) {
           const user = response.documents[0];
           const startSub = generateTimestamp();
-          const nextMonth = new Date();
-          nextMonth.setMonth(nextMonth.getMonth() + 1);
-          const endSub = generateTimestamp(nextMonth);
-
-          // Fetch the current subscription history
-          const currentHistory = user.subscriptionHistory || "";
-
-          // Format the new history entry
-          const newEntry = JSON.stringify(event.data, null, 2);
-
-          // Prepare the updated subscription history
-          const updatedHistory = currentHistory
-            ? `${currentHistory}\n\n,\n\n${newEntry}`
-            : newEntry;
+          const endSub = calculateEndSub(planInterval);
 
           // Update user document
           await databases.updateDocument(
             APPWRITE_DATABASE_ID,
             APPWRITE_COLLECTION_ID,
             user.$id,
-            { startSub, endSub, subscriptionHistory: updatedHistory }
+            { startSub, endSub }
           );
 
-          console.log(`Subscription updated for ${userEmail}`);
+          console.log(`Subscription updated for ${email}`);
           res.status(200).json({ message: "Subscription updated" });
         } else {
-          console.log(`User with email ${userEmail} not found`);
-          res.status(404).json({ error: "User not found" });
-        }
-      } catch (error) {
-        console.error("Error updating subscription:", error);
-        res.status(500).json({ error: "Internal Server Error" });
-      }
-      break;
-
-    case "charge.dispute.create":
-    case "charge.dispute.remind":
-    case "charge.dispute.resolve":
-    case "customeridentification.failed":
-    case "customeridentification.success":
-    case "dedicatedaccount.assign.failed":
-    case "dedicatedaccount.assign.success":
-    case "invoice.create":
-    case "invoice.payment_failed":
-    case "invoice.update":
-    case "paymentrequest.pending":
-    case "paymentrequest.success":
-    case "refund.failed":
-    case "refund.pending":
-    case "refund.processed":
-    case "refund.processing":
-    case "subscription.create":
-
-    console.log("Payment was successful:", event.data);
-
-      try {
-        const response = await databases.listDocuments(
-          APPWRITE_DATABASE_ID,
-          APPWRITE_COLLECTION_ID,
-          [sdk.Query.equal("email", [userEmail])]
-        );
-
-        if (response.documents.length > 0) {
-          const user = response.documents[0];
-         
-          // Fetch the current subscription history
-          const currentHistory = user.subscriptionHistory || "";
-
-          // Format the new history entry
-          const newEntry = JSON.stringify(event.data, null, 2);
-
-          // Prepare the updated subscription history
-          const updatedHistory = currentHistory
-            ? `${currentHistory}\n\n,\n\n${newEntry}`
-            : newEntry;
-
-          // Update user document
-          await databases.updateDocument(
-            APPWRITE_DATABASE_ID,
-            APPWRITE_COLLECTION_ID,
-            user.$id,
-            { subscriptionHistory: updatedHistory }
-          );
-
-          console.log(`Subscription updated for ${userEmail}`);
-          res.status(200).json({ message: "Subscription updated" });
-        } else {
-          console.log(`User with email ${userEmail} not found`);
+          console.log(`User with email ${email} not found`);
           res.status(404).json({ error: "User not found" });
         }
       } catch (error) {
@@ -165,285 +137,16 @@ module.exports = async (req, res) => {
       break;
 
     case "subscription.disable":
-
-    console.log("Payment was successful:", event.data);
-
-    try {
-      const response = await databases.listDocuments(
-        APPWRITE_DATABASE_ID,
-        APPWRITE_COLLECTION_ID,
-        [sdk.Query.equal("email", [userEmail])]
-      );
-
-      if (response.documents.length > 0) {
-        const user = response.documents[0];
-       
-        // Fetch the current subscription history
-        const currentHistory = user.subscriptionHistory || "";
-
-        // Format the new history entry
-        const newEntry = JSON.stringify(event.data, null, 2);
-
-        // Prepare the updated subscription history
-        const updatedHistory = currentHistory
-          ? `${currentHistory}\n\n,\n\n${newEntry}`
-          : newEntry;
-
-        // Update user document
-        await databases.updateDocument(
-          APPWRITE_DATABASE_ID,
-          APPWRITE_COLLECTION_ID,
-          user.$id,
-          { subscriptionHistory: updatedHistory }
-        );
-
-        console.log(`Subscription updated for ${userEmail}`);
-        res.status(200).json({ message: "Subscription updated" });
-      } else {
-        console.log(`User with email ${userEmail} not found`);
-        res.status(404).json({ error: "User not found" });
-      }
-    } catch (error) {
-      console.error("Error updating subscription:", error);
-      res.status(500).json({ error: "Internal Server Error" });
-    }
-    break;
-
-
+    case "invoice.payment_failed":
     case "subscription.expiring_cards":
-
-    console.log("Payment was successful:", event.data);
-
-    try {
-      const response = await databases.listDocuments(
-        APPWRITE_DATABASE_ID,
-        APPWRITE_COLLECTION_ID,
-        [sdk.Query.equal("email", [userEmail])]
-      );
-
-      if (response.documents.length > 0) {
-        const user = response.documents[0];
-       
-        // Fetch the current subscription history
-        const currentHistory = user.subscriptionHistory || "";
-
-        // Format the new history entry
-        const newEntry = JSON.stringify(event.data, null, 2);
-
-        // Prepare the updated subscription history
-        const updatedHistory = currentHistory
-          ? `${currentHistory}\n\n,\n\n${newEntry}`
-          : newEntry;
-
-        // Update user document
-        await databases.updateDocument(
-          APPWRITE_DATABASE_ID,
-          APPWRITE_COLLECTION_ID,
-          user.$id,
-          { subscriptionHistory: updatedHistory }
-        );
-
-        console.log(`Subscription updated for ${userEmail}`);
-        res.status(200).json({ message: "Subscription updated" });
-      } else {
-        console.log(`User with email ${userEmail} not found`);
-        res.status(404).json({ error: "User not found" });
-      }
-    } catch (error) {
-      console.error("Error updating subscription:", error);
-      res.status(500).json({ error: "Internal Server Error" });
-    }
-    break;
-
-
     case "subscription.not_renew":
-
-    console.log("Payment was successful:", event.data);
-
-    try {
-      const response = await databases.listDocuments(
-        APPWRITE_DATABASE_ID,
-        APPWRITE_COLLECTION_ID,
-        [sdk.Query.equal("email", [userEmail])]
-      );
-
-      if (response.documents.length > 0) {
-        const user = response.documents[0];
-       
-        // Fetch the current subscription history
-        const currentHistory = user.subscriptionHistory || "";
-
-        // Format the new history entry
-        const newEntry = JSON.stringify(event.data, null, 2);
-
-        // Prepare the updated subscription history
-        const updatedHistory = currentHistory
-          ? `${currentHistory}\n\n,\n\n${newEntry}`
-          : newEntry;
-
-        // Update user document
-        await databases.updateDocument(
-          APPWRITE_DATABASE_ID,
-          APPWRITE_COLLECTION_ID,
-          user.$id,
-          { subscriptionHistory: updatedHistory }
-        );
-
-        console.log(`Subscription updated for ${userEmail}`);
-        res.status(200).json({ message: "Subscription updated" });
-      } else {
-        console.log(`User with email ${userEmail} not found`);
-        res.status(404).json({ error: "User not found" });
-      }
-    } catch (error) {
-      console.error("Error updating subscription:", error);
-      res.status(500).json({ error: "Internal Server Error" });
-    }
-    break;
-
-
-    case "transfer.failed":
-
-    console.log("Payment was successful:", event.data);
-
-    try {
-      const response = await databases.listDocuments(
-        APPWRITE_DATABASE_ID,
-        APPWRITE_COLLECTION_ID,
-        [sdk.Query.equal("email", [userEmail])]
-      );
-
-      if (response.documents.length > 0) {
-        const user = response.documents[0];
-       
-        // Fetch the current subscription history
-        const currentHistory = user.subscriptionHistory || "";
-
-        // Format the new history entry
-        const newEntry = JSON.stringify(event.data, null, 2);
-
-        // Prepare the updated subscription history
-        const updatedHistory = currentHistory
-          ? `${currentHistory}\n\n,\n\n${newEntry}`
-          : newEntry;
-
-        // Update user document
-        await databases.updateDocument(
-          APPWRITE_DATABASE_ID,
-          APPWRITE_COLLECTION_ID,
-          user.$id,
-          { subscriptionHistory: updatedHistory }
-        );
-
-        console.log(`Subscription updated for ${userEmail}`);
-        res.status(200).json({ message: "Subscription updated" });
-      } else {
-        console.log(`User with email ${userEmail} not found`);
-        res.status(404).json({ error: "User not found" });
-      }
-    } catch (error) {
-      console.error("Error updating subscription:", error);
-      res.status(500).json({ error: "Internal Server Error" });
-    }
-    break;
-
-
-    case "transfer.success":
-
-    console.log("Payment was successful:", event.data);
-
-    try {
-      const response = await databases.listDocuments(
-        APPWRITE_DATABASE_ID,
-        APPWRITE_COLLECTION_ID,
-        [sdk.Query.equal("email", [userEmail])]
-      );
-
-      if (response.documents.length > 0) {
-        const user = response.documents[0];
-       
-        // Fetch the current subscription history
-        const currentHistory = user.subscriptionHistory || "";
-
-        // Format the new history entry
-        const newEntry = JSON.stringify(event.data, null, 2);
-
-        // Prepare the updated subscription history
-        const updatedHistory = currentHistory
-          ? `${currentHistory}\n\n,\n\n${newEntry}`
-          : newEntry;
-
-        // Update user document
-        await databases.updateDocument(
-          APPWRITE_DATABASE_ID,
-          APPWRITE_COLLECTION_ID,
-          user.$id,
-          { subscriptionHistory: updatedHistory }
-        );
-
-        console.log(`Subscription updated for ${userEmail}`);
-        res.status(200).json({ message: "Subscription updated" });
-      } else {
-        console.log(`User with email ${userEmail} not found`);
-        res.status(404).json({ error: "User not found" });
-      }
-    } catch (error) {
-      console.error("Error updating subscription:", error);
-      res.status(500).json({ error: "Internal Server Error" });
-    }
-    break;
-
-
-    case "transfer.reversed":
-
-    console.log("Payment was successful:", event.data);
-
-    try {
-      const response = await databases.listDocuments(
-        APPWRITE_DATABASE_ID,
-        APPWRITE_COLLECTION_ID,
-        [sdk.Query.equal("email", [userEmail])]
-      );
-
-      if (response.documents.length > 0) {
-        const user = response.documents[0];
-       
-        // Fetch the current subscription history
-        const currentHistory = user.subscriptionHistory || "";
-
-        // Format the new history entry
-        const newEntry = JSON.stringify(event.data, null, 2);
-
-        // Prepare the updated subscription history
-        const updatedHistory = currentHistory
-          ? `${currentHistory}\n\n,\n\n${newEntry}`
-          : newEntry;
-
-        // Update user document
-        await databases.updateDocument(
-          APPWRITE_DATABASE_ID,
-          APPWRITE_COLLECTION_ID,
-          user.$id,
-          { subscriptionHistory: updatedHistory }
-        );
-
-        console.log(`Subscription updated for ${userEmail}`);
-        res.status(200).json({ message: "Subscription updated" });
-      } else {
-        console.log(`User with email ${userEmail} not found`);
-        res.status(404).json({ error: "User not found" });
-      }
-    } catch (error) {
-      console.error("Error updating subscription:", error);
-      res.status(500).json({ error: "Internal Server Error" });
-    }
-
-
-      await handleEvent(event.event, event.data);
+      console.log(`Subscription event received: ${event.event}`);
+      await updateSubscriptionHistory(event.data.customer.email, event.data);
+      res.status(200).json({ message: "Subscription history updated" });
       break;
 
     default:
-      console.log("Unhandled event:", event);
+      console.log("Unhandled event:", event.event);
       res.status(200).json({ message: "Unhandled event" });
       break;
   }
