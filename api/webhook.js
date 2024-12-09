@@ -32,12 +32,12 @@ const generateTimestamp = (date = new Date()) => {
   return `${isoDate.substring(0, 19)}.${microseconds}`;
 };
 
-// Function to calculate subscription end date
-const calculateEndSub = (interval) => {
+// Function to calculate subscription end date based on plan name
+const calculateEndSub = (planName) => {
   const endDate = new Date();
-  if (interval === "monthly") {
+  if (planName?.toLowerCase().includes("monthly")) {
     endDate.setMonth(endDate.getMonth() + 1);
-  } else if (interval === "yearly") {
+  } else if (planName?.toLowerCase().includes("yearly")) {
     endDate.setFullYear(endDate.getFullYear() + 1);
   }
   return generateTimestamp(endDate);
@@ -102,7 +102,7 @@ module.exports = async (req, res) => {
       console.log("Payment was successful:", event.data);
 
       const { email } = event.data.customer;
-      const planInterval = event.data.plan?.interval || "monthly"; // Default to monthly if undefined
+      const planName = event.data.plan?.name || "monthly"; // Default to "monthly" if undefined
 
       try {
         const response = await databases.listDocuments(
@@ -114,7 +114,7 @@ module.exports = async (req, res) => {
         if (response.documents.length > 0) {
           const user = response.documents[0];
           const startSub = generateTimestamp();
-          const endSub = calculateEndSub(planInterval);
+          const endSub = calculateEndSub(planName);
 
           // Update user document
           await databases.updateDocument(
